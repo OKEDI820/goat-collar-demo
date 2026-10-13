@@ -178,14 +178,13 @@ def m1_infer():
             features = features[:, m1_bundle["feature_idx"]]
 
         # Run inference
-        # Run inference
-        # Run inference
         if m1_bundle["kind"] == "int_forest":
             # Integer quantized model: convert features to int16
             f_min = m1_bundle["f_min"]
-            f_max = m1_bundle["f_max"]     # <--- ADD THIS EXACT LINE
             f_scale = m1_bundle["f_scale"]
+            f_max = f_min + 65535 * f_scale  # Calculate the 16-bit integer maximum
             Q = np.round((np.clip(features, f_min, f_max) - f_min) / f_scale) - 32768
+            Q = Q.astype(np.int16)
 
             # Predict using the integer model
             leaves = m1_bundle["model"].apply(Q.astype(np.float32))
