@@ -2,20 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
 
-// TensorFlow.js Lite loader
-let tflite = null;
-const loadTFLite = async () => {
-  if (tflite) return tflite;
-  try {
-    const tf = require('@tensorflow/tfjs');
-    const tfliteSupport = require('@tensorflow/tfjs-tflite');
-    return tf;
-  } catch (e) {
-    console.warn('TensorFlow.js not available, will use fallback');
-    return null;
-  }
-};
-
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 function App() {
@@ -27,7 +13,6 @@ function App() {
   const [m2Loading, setM2Loading] = useState(false);
   const [m2Result, setM2Result] = useState(null);
   const [m2Error, setM2Error] = useState(null);
-  const [m2Model, setM2Model] = useState(null);
 
   const [specs, setSpecs] = useState({ m1: null, m2: null });
   const [specsLoading, setSpecsLoading] = useState(false);
@@ -39,7 +24,6 @@ function App() {
   // Load specs on mount
   useEffect(() => {
     fetchSpecs();
-    loadM2Model();
   }, []);
 
   // Fetch model specifications
@@ -55,19 +39,6 @@ function App() {
       console.error('Failed to load specs:', err);
     }
     setSpecsLoading(false);
-  };
-
-  // Load M2 TensorFlow Lite model
-  const loadM2Model = async () => {
-    try {
-      const response = await axios.get(`${API_BASE}/m2/model`, {
-        responseType: 'arraybuffer'
-      });
-      setM2Model(response.data);
-    } catch (err) {
-      console.error('Failed to load M2 model:', err);
-      setM2Error('Could not load M2 model: ' + err.message);
-    }
   };
 
   // M1 Demo: Run inference on a test motion window
@@ -151,8 +122,7 @@ function App() {
     setM2Result(null);
 
     try {
-      // For now, send to backend which will run the model
-      // In a production app, you'd run TFLite in the browser
+      // Send to backend which will run the model
       const response = await axios.post(`${API_BASE}/m2/infer`, {
         image: base64Image
       }, {
