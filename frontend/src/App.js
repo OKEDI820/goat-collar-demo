@@ -20,6 +20,9 @@ function App() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
+  
+  // Cache the TFLite model so it only loads once per session
+  const tfliteModelRef = useRef(null); 
 
   // Load specs on mount
   useEffect(() => {
@@ -48,13 +51,10 @@ function App() {
     setM1Result(null);
 
     try {
-      // Generate a test motion window (400 samples × 6 channels)
       const testWindow = generateTestMotionWindow();
-
       const response = await axios.post(`${API_BASE}/m1/infer`, {
         windows: [testWindow]
       });
-
       setM1Result(response.data);
     } catch (err) {
       setM1Error(err.response?.data?.error || err.message);
@@ -66,8 +66,7 @@ function App() {
   const generateTestMotionWindow = () => {
     const window = [];
     for (let i = 0; i < 400; i++) {
-      const t = i / 200; // Normalize by sample rate
-      // Simulate eating motion: repetitive acceleration patterns
+      const t = i / 200; 
       const isEating = Math.random() > 0.5;
       const ax = isEating ? Math.sin(t * 6) * 2 : Math.random() - 0.5;
       const ay = isEating ? Math.cos(t * 5) * 1.5 : Math.random() - 0.5;
@@ -116,38 +115,77 @@ function App() {
     reader.readAsDataURL(file);
   };
 
+  // REWRITTEN: Client-side classification logic using TensorFlow.js
   const classifyImage = async (base64Image) => {
     setM2Loading(true);
     setM2Error(null);
     setM2Result(null);
 
     try {
-      // Send to backend which will run the model
-      const response = await axios.post(`${API_BASE}/m2/infer`, {
-        image: base64Image
-      }, {
-        headers: { 'Content-Type': 'application/json' }
-      });
-      setM2Result(response.data);
-    } catch (err) {
-      // If backend M2 endpoint not available, show fallback
-      if (err.response?.status === 404) {
-        setM2Result({
-          species: specs.m2?.species || ['hibiscus', 'aloe vera', 'moringa', 'neem', 'tulsi'],
-          confidence: {
-            'moringa': 0.94,
-            'tulsi': 0.04,
-            'neem': 0.01,
-            'hibiscus': 0.005,
-            'aloe vera': 0.005
-          },
-          demo: true,
-          message: 'Demo result (backend not available)'
-        });
-      } else {
-        setM2Error(err.response?.data?.error || err.message);
+      const tf = window.tf;
+      const tflite = window.tflite;
+
+      if (!tf || !tflite) {
+        throw new Error("TensorFlow.js not found. Check index.html scripts.");
       }
+      if (!specs.m2) {
+        throw new Error("M2 specifications not loaded yet.");
+      }
+
+      // 1. Load the model (caches in memory after first download)
+      if (!tfliteModelRef.current) {
+        console.log("Downloading TFLite model...");
+        tfliteModelRef.current = await tflite.loadTFLiteModel(`${API_BASE}/m2/model`);
+      }
+      const model = tfliteModelRef.current;
+
+      // 2. Create HTML Image Object from base64
+      const img = new Image();
+      img.src = base64Image;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+
+      // 3. Preprocess Image and Predict inside tf.tidy to prevent memory leaks
+      let probabilities;
+      tf.tidy(() => {
+        let tensor = tf.browser.fromPixels(img);
+        
+        // Resize to match specs (e.g., 224x224)
+        const size = specs.m2.image_size;
+        tensor = tf.image.resizeBilinear(tensor, [size, size]);
+        
+        // Add batch dimension and normalize [0, 1]
+        tensor = tensor.expandDims(0).toFloat().div(255.0);
+
+        // Run inference
+        const outputTensor = model.predict(tensor);
+        probabilities = Array.from(outputTensor.dataSync());
+      });
+
+      // 4. Map probabilities to species and sort highest to lowest
+      const speciesList = specs.m2.species;
+      const confidenceMap = {};
+      speciesList.forEach((species, idx) => {
+        confidenceMap[species] = probabilities[idx];
+      });
+
+      const sortedConfidenceMap = Object.fromEntries(
+        Object.entries(confidenceMap).sort(([, a], [, b]) => b - a)
+      );
+
+      setM2Result({
+        species: speciesList,
+        confidence: sortedConfidenceMap,
+        demo: false
+      });
+
+    } catch (err) {
+      console.error(err);
+      setM2Error(err.message || "Failed to classify image locally.");
     }
+    
     setM2Loading(false);
   };
 
