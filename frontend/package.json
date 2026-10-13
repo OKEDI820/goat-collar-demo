@@ -7,9 +7,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
-    "axios": "^1.4.0",
-    "@tensorflow/tfjs": "^4.10.0",
-    "@tensorflow/tfjs-tflite": "^0.0.1-alpha.10"
+    "axios": "^1.4.0"
   },
   "scripts": {
     "start": "react-scripts start",
