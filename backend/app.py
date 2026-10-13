@@ -8,12 +8,13 @@ import os
 import json
 import numpy as np
 import joblib
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from typing import Dict, List
+import io
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ============================================================================
 # LOAD MODELS AND METADATA
@@ -149,9 +150,10 @@ def m1_infer():
 
     Output JSON:
     {
-        "predictions": [list of P(eating) values],
+        "p_eating": [list of P(eating) values],
         "threshold": 0.43,
-        "decisions": ["eating", "not eating", ...]
+        "decisions": ["eating", "not eating", ...],
+        "features_extracted": 166
     }
     """
     if not M1_READY:
@@ -206,6 +208,7 @@ def m1_infer():
         })
 
     except Exception as e:
+        print(f"M1 inference error: {e}")
         return jsonify({"error": str(e)}), 400
 
 
@@ -229,15 +232,35 @@ def m2_spec():
 
 @app.route("/m2/model", methods=["GET"])
 def m2_model():
-    """Serve the TensorFlow Lite model file for M2."""
+    """
+    Serve the TensorFlow Lite model file for M2.
+    Browser will use this to run client-side inference.
+    """
     try:
+        # Check if file exists
+        if not os.path.exists("M2_plant_model.tflite"):
+            print(f"❌ Model file not found at: {os.path.abspath('M2_plant_model.tflite')}")
+            print(f"Current directory: {os.getcwd()}")
+            print(f"Available files: {os.listdir('.')}")
+            return jsonify({"error": "M2 model file not found"}), 404
+
+        # Read the model file
         with open("M2_plant_model.tflite", "rb") as f:
-            return f.read(), 200, {
-                "Content-Type": "application/octet-stream",
-                "Content-Disposition": "attachment; filename=M2_plant_model.tflite"
-            }
-    except FileNotFoundError:
-        return jsonify({"error": "M2 model file not found"}), 404
+            model_bytes = f.read()
+
+        print(f"✓ Serving M2 model ({len(model_bytes)} bytes)")
+
+        # Return as binary with proper headers
+        return send_file(
+            io.BytesIO(model_bytes),
+            mimetype="application/octet-stream",
+            as_attachment=False,
+            download_name="M2_plant_model.tflite"
+        )
+
+    except Exception as e:
+        print(f"❌ Error serving M2 model: {e}")
+        return jsonify({"error": f"Failed to serve model: {str(e)}"}), 500
 
 
 if __name__ == "__main__":
@@ -252,8 +275,8 @@ if __name__ == "__main__":
     print("  GET  /m1/spec        - M1 model specification")
     print("  POST /m1/infer       - Run M1 inference on motion windows")
     print("  GET  /m2/spec        - M2 model specification")
-    print("  GET  /m2/model       - Download M2 TensorFlow Lite model")
+    print("  GET  /m2/model       - Download M2 TensorFlow Lite model (for browser)")
     print("=" * 70 + "\n")
 
     # Run server
-    app.run(debug=True, port=5000, host="0.0.0.0")
+    app.run(debug=False, port=5000, host="0.0.0.0")
