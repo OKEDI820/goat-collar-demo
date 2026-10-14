@@ -162,7 +162,6 @@ function App() {
         tensor = tf.image.resizeBilinear(tensor, [size, size]);
         
         // Add batch dimension and cast to int32 (TF.js equivalent for uint8)
-        // Do NOT use .toFloat().div(255.0) here for quantized models
         tensor = tensor.expandDims(0).cast('int32');
 
         // Run inference
@@ -188,10 +187,16 @@ function App() {
         Object.entries(confidenceMap).sort(([, a], [, b]) => b - a)
       );
 
+      // 5. Evaluate against the backend threshold (theta)
+      const highestConfidence = Math.max(...probabilities);
+      const threshold = specs.m2.theta || 0.5; // Default to 50% if theta is missing
+      const isUncertain = highestConfidence < threshold;
+
       setM2Result({
         species: speciesList,
         confidence: sortedConfidenceMap,
-        demo: false
+        demo: false,
+        isUncertain: isUncertain
       });
 
     } catch (err) {
@@ -349,6 +354,22 @@ function App() {
             {m2Result && (
               <div className="result-box">
                 <h3>Classification Results</h3>
+                
+                {/* NEW LOGIC: Uncertainty Warning */}
+                {m2Result.isUncertain && (
+                  <div style={{
+                    backgroundColor: '#fff3cd', 
+                    color: '#856404', 
+                    padding: '12px', 
+                    borderRadius: '6px', 
+                    marginBottom: '16px', 
+                    border: '1px solid #ffeeba',
+                    fontSize: '0.95rem'
+                  }}>
+                    <strong>⚠️ Not sure:</strong> This plant species will be forwarded for testing.
+                  </div>
+                )}
+
                 {m2Result.demo && (
                   <p className="demo-badge">{m2Result.message}</p>
                 )}
