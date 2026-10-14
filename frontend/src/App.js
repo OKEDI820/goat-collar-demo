@@ -132,8 +132,8 @@ function App() {
         throw new Error("M2 specifications not loaded yet.");
       }
 
-      // Explicitly set the WASM path to the CDN so it doesn't 404 on localhost
-      tflite.setWasmPath('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.10/dist/');
+      // Explicitly set the WASM path to the stable alpha.8 CDN
+      tflite.setWasmPath('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.8/dist/');
 
       // 1. Load the model (caches in memory after first download)
       if (!tfliteModelRef.current) {
