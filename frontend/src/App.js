@@ -155,16 +155,26 @@ function App() {
       tf.tidy(() => {
         let tensor = tf.browser.fromPixels(img);
         
+        // Extract size (handles both integer and array formats from the backend)
+        const size = Array.isArray(specs.m2.image_size) ? specs.m2.image_size[0] : specs.m2.image_size;
+        
         // Resize to match specs (e.g., 224x224)
-        const size = specs.m2.image_size;
         tensor = tf.image.resizeBilinear(tensor, [size, size]);
         
-        // Add batch dimension and normalize [0, 1]
-        tensor = tensor.expandDims(0).toFloat().div(255.0);
+        // Add batch dimension and cast to int32 (TF.js equivalent for uint8)
+        // Do NOT use .toFloat().div(255.0) here for quantized models
+        tensor = tensor.expandDims(0).cast('int32');
 
         // Run inference
         const outputTensor = model.predict(tensor);
-        probabilities = Array.from(outputTensor.dataSync());
+        let rawData = Array.from(outputTensor.dataSync());
+        
+        // If the output is also quantized (0-255), convert it back to decimals (0.0-1.0) for the UI
+        if (rawData.some(val => val > 1)) {
+          probabilities = rawData.map(val => val / 255.0);
+        } else {
+          probabilities = rawData;
+        }
       });
 
       // 4. Map probabilities to species and sort highest to lowest
